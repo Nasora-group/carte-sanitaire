@@ -229,7 +229,7 @@ addEventListener('resize',render);
  other:{n:'Autre structure sanitaire identifiée',color:'#546e7a',shape:'circle',on:true}
  };
  function nationalType(tags){
-  const raw=[tags.amenity,tags.healthcare,tags.healthcare_speciality,tags.name,tags['name:fr'],tags.operator,tags.description].filter(Boolean).join(' ').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
+  const raw=[tags.amenity,tags.healthcare,tags.healthcare_speciality,tags.name,tags['name:fr'],tags.operator,tags.description].filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const a=String(tags.amenity||'').toLowerCase(),h=String(tags.healthcare||'').toLowerCase();
   if(/pharmacie|pharmacy/.test(raw)||a==='pharmacy'||h==='pharmacy')return 'pharmacy';
   if(/centre medical des sapeurs|centre medical.*sapeur.?pompier|infirmerie des sapeurs/.test(raw))return 'fire';
