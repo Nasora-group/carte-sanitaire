@@ -254,8 +254,9 @@ addEventListener('resize',render);
  }
  box=function(v){
   if(v==='national')return fitBox(nationalBounds.map((n,i)=>i===0?35:i===1?35:i===2?1965:1404));
-  const r=regions.find(q=>q.name===v);if(r)return fitBox(r.svgBounds);
+  // La vue détaillée de Dakar utilise les coordonnées du SVG original, pas celles du polygone national.
   if(v==='Dakar')return oldBox('all');
+  const r=regions.find(q=>q.name===v);if(r)return fitBox(r.svgBounds);
   return oldBox(v);
  };
  render=function(){setNationalLayerVisibility();oldRender();if(!['Dakar',...Object.keys(DEP)].includes(view)){const [x,y,w,h]=box(view);svg.setAttribute('viewBox',`${x} ${y} ${w} ${h}`);const k=w/(svg.getBoundingClientRect().width||800);nationalLabels.querySelectorAll('text').forEach(t=>t.setAttribute('font-size',Math.max(10,11*k)));nationalPointsGroup.querySelectorAll('.nat-pt').forEach(g=>g.setAttribute('transform',`translate(${g.dataset.x} ${g.dataset.y}) scale(${k})`));}}
