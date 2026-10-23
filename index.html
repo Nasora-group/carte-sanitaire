@@ -368,6 +368,14 @@ async function loadNational(){
      const j=await r.json();
      if(Array.isArray(j.elements)){j.elements.forEach(e=>collected.set(String(e.type)+':'+String(e.id),e));found=true;break;}
     }catch(e){lastErr=e;}
+    if(!found){
+     try{
+      const r=await fetch(endpoint+'?data='+encodeURIComponent(query),{method:'GET'});
+      if(!r.ok)throw new Error('Overpass GET '+r.status);
+      const j=await r.json();
+      if(Array.isArray(j.elements)){j.elements.forEach(e=>collected.set(String(e.type)+':'+String(e.id),e));found=true;break;}
+     }catch(e){lastErr=e;}
+    }
    }
    if(found)elements=[...collected.values()];
    // Draw partial results as soon as a query succeeds, instead of waiting for every endpoint.
