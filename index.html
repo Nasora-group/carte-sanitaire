@@ -88,7 +88,7 @@ const CAT={
  cli:{n:'Cliniques',v:'cli',shape:'s',r:5.5,on:true},
  cen:{n:'Postes et centres de santé',v:'cen',shape:'d',r:6,on:true},
  med:{n:'Centres médicaux, cabinets, autres',v:'med',shape:'t',r:6,on:true},
- pha:{n:'Pharmacies',v:'pha',shape:'p',r:3.6,on:false}};
+ pha:{n:'Pharmacies',v:'pha',shape:'p',r:3.6,on:true}};
 const MAP={'hopital':'hos','clinique':'cli','polyclinique':'cli','poste de sante':'cen','centre de sante':'cen','dispensaire':'cen','case de sante':'cen','maternite':'cen','infirmerie':'cen','district sanitaire':'cen','pharmacie':'pha'};
 const TL={'hopital':'Hôpital','clinique':'Clinique','polyclinique':'Polyclinique','poste de sante':'Poste de santé','centre de sante':'Centre de santé','dispensaire':'Dispensaire','case de sante':'Case de santé','maternite':'Maternité','infirmerie':'Infirmerie','district sanitaire':'District sanitaire','pharmacie':'Pharmacie','centre medical':'Centre médical','cabinet':'Cabinet','plateau medical':'Plateau médical'};
 const pts=D.pts.map(p=>({name:p[0],type:p[1],x:p[2],y:p[3],com:p[4],cat:MAP[p[1]]||'med'}));
@@ -290,11 +290,32 @@ async function loadNational(){
   candidates.forEach((r,i)=>{r.svgBounds=bboxSvg(r.feature);r.color=i%8;const all=collectPoints(r.feature.geometry);let sx=0,sy=0;all.forEach(c=>{sx+=c[0];sy+=c[1]});const center=all.length?[sx/all.length,sy/all.length]:[(minX+maxX)/2,(minY+maxY)/2];r.center=project(center[0],center[1]);r.name=regionAliases[clean(r.raw)]||r.name;regions.push(r);const path=el('path',{d:geomPath(r.feature.geometry),class:'zone c'+r.color,'fill-rule':'evenodd',tabindex:'0',role:'button','aria-label':r.name},nationalSvg);path.addEventListener('mouseenter',()=>{if(view==='national')show('region:'+r.name)});path.addEventListener('focus',()=>show('region:'+r.name));path.addEventListener('click',()=>{view=r.name;lock=null;[...tabsEl.children].forEach(t=>t.setAttribute('aria-pressed',t.dataset.v===view));render();show(null)});const tx=el('text',{x:r.center[0],y:r.center[1],class:'lab','text-anchor':'middle'},nationalLabels);tx.textContent=r.name;});
   // Load public health-related OSM objects; preserve the original Dakar dataset as a separate detailed view.
   makeTabs();view='national';[...tabsEl.children].forEach(t=>t.setAttribute('aria-pressed',t.dataset.v===view));render();show(null);
-  const query='[out:json][timeout:35];(nwr(12.2,-17.7,16.8,-11.2)["amenity"~"hospital|clinic|doctors|pharmacy|dentist|health_post|health_centre"];nwr(12.2,-17.7,16.8,-11.2)["healthcare"~"hospital|clinic|doctor|pharmacy|centre|center|health_post|dentist"];);out center tags;';
-  const endpoints=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];let elements=null;
-  for(const endpoint of endpoints){try{const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(query)});if(!r.ok)throw new Error('Overpass '+r.status);const j=await r.json();if(j.elements){elements=j.elements;break;}}catch(e){lastErr=e;}}
-  if(elements){drawNationalPoints(elements);const countEl=leg.querySelectorAll('.n');const counts={hos:0,cli:0,cen:0,med:0,pha:0};nationalPoints.forEach(p=>counts[p.cat]++);Object.keys(CAT).forEach((k,i)=>{if(countEl[i])countEl[i].textContent=counts[k]+' + '+pts.filter(p=>p.cat===k).length;});render();show(null);}
-  else {infoEl.innerHTML='<h2>Carte nationale chargée</h2><p class="t">'+regions.length+' régions</p><p class="s">Les contours sont disponibles, mais le service cartographique des structures sanitaires ne répond pas actuellement. La carte détaillée de Dakar reste accessible.</p><p><a href="https://www.esante.sn/" target="_blank" rel="noopener">Consulter les structures officielles sur eSanté</a></p>';}
+  const query='[out:json][timeout:90];(nwr(12.2,-17.7,16.8,-11.2)["amenity"~"hospital|clinic|doctors|pharmacy|dentist|health_post|health_centre"];nwr(12.2,-17.7,16.8,-11.2)["healthcare"~"hospital|clinic|doctor|pharmacy|centre|center|health_post|dentist"];);out center tags;';
+  const endpoints=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter'];let elements=null;
+  for(const endpoint of endpoints){
+   try{
+    let r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(query)});
+    if(!r.ok)throw new Error('Overpass POST '+r.status);
+    let j=await r.json();
+    if(Array.isArray(j.elements)){elements=j.elements;break;}
+   }catch(e){lastErr=e;}
+   try{
+    const r=await fetch(endpoint+'?data='+encodeURIComponent(query),{method:'GET'});
+    if(!r.ok)throw new Error('Overpass GET '+r.status);
+    const j=await r.json();
+    if(Array.isArray(j.elements)){elements=j.elements;break;}
+   }catch(e){lastErr=e;}
+  }
+  if(elements){
+   drawNationalPoints(elements);
+   const countEl=leg.querySelectorAll('.n');
+   const counts={hos:0,cli:0,cen:0,med:0,pha:0};
+   nationalPoints.forEach(p=>counts[p.cat]++);
+   Object.keys(CAT).forEach((k,i)=>{if(countEl[i])countEl[i].textContent=counts[k]+' + '+pts.filter(p=>p.cat===k).length;});
+   render();show(null);
+   if(!nationalPoints.length)infoEl.innerHTML='<h2>Carte nationale chargée</h2><p class="t">'+regions.length+' régions</p><p class="s">La source OpenStreetMap a répondu, mais aucune structure compatible avec les filtres actuels n’a été trouvée dans sa réponse.</p>';
+  }
+  else {infoEl.innerHTML='<h2>Carte nationale chargée</h2><p class="t">'+regions.length+' régions</p><p class="s">Les contours sont visibles, mais le chargement des structures a échoué. Cela peut venir de la connexion, du navigateur ou d’une surcharge temporaire du service cartographique. Essaie de recharger la page avec Internet. '+(lastErr&&lastErr.message?'Détail : '+String(lastErr.message).replace(/</g,'&lt;'):'')+'</p><p><a href="https://www.esante.sn/" target="_blank" rel="noopener">Consulter le portail officiel eSanté</a></p>';}
  }
  // Étendre les filtres de la légende aux points nationaux lorsqu’ils sont disponibles.
  const legButtons=[...leg.querySelectorAll('button')];legButtons.forEach((b,i)=>{b.addEventListener('click',()=>{const k=Object.keys(CAT)[i];setTimeout(()=>{nationalPoints.forEach(p=>{if(p.cat===k)p.el.style.display=CAT[k].on?'':'none'});},0);});});
