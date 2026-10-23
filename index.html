@@ -268,6 +268,8 @@ addEventListener('resize',render);
  const nationalSvg=el('g',{'aria-label':'Régions du Sénégal'},svg);
  const nationalLabels=el('g',{},svg);
  const nationalPointsGroup=el('g',{},svg);
+ nationalPointsGroup.style.pointerEvents='all';
+ // Keep the structure layer above regional fills and labels so symbols cannot be covered.
  let regions=[], nationalPoints=[], nationalBounds=[0,0,2000,1439.6], currentFeature=null;
  const clean=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
  const regionAliases={
@@ -328,6 +330,9 @@ addEventListener('resize',render);
  function classify(tags){return nationalType(tags);}
  function typeLabel(cat){return NCAT[cat]?.n||'Structure sanitaire';}
  function drawNationalPoints(elements){
+  // SVG paints later children above earlier children; re-append the points layer last.
+  if(nationalPointsGroup.parentNode)nationalPointsGroup.parentNode.appendChild(nationalPointsGroup);
+  nationalPointsGroup.style.pointerEvents='all';
   nationalPointsGroup.innerHTML='';nationalPoints=[];
   const dedupe=new Set();
   elements.forEach(e=>{const tags=e.tags||{};let lon=e.lon,lat=e.lat;if((lon==null||lat==null)&&e.center){lon=e.center.lon;lat=e.center.lat;}if(lon==null||lat==null)return;const nm=tags.name||tags['name:fr']||tags.operator||typeLabel(classify(tags));const key=String(e.type||'')+':'+String(e.id||'')+':'+lon+':'+lat;if(dedupe.has(key))return;dedupe.add(key);const coord=[Number(lon),Number(lat)];if(!Number.isFinite(coord[0])||!Number.isFinite(coord[1])||coord[0]<-17.7||coord[0]>-11.2||coord[1]<12.2||coord[1]>16.8)return;const f=regions.find(r=>inFeature(coord,r.feature));const cat=classify(tags),xy=project(coord[0],coord[1]);const g=el('g',{class:'ptg nat-pt',tabindex:'0',role:'button','aria-label':nm+', '+typeLabel(cat)},nationalPointsGroup);g.dataset.x=xy[0];g.dataset.y=xy[1];const radius=cat==='hospital'?6.2:cat==='pharmacy'?3.4:5.1;nationalSymbol(g,cat,radius);g.style.display=NCAT[cat].on?'':'none';const title=el('title',{},g);title.textContent=nm+' · '+typeLabel(cat)+(f?' · '+f.name:'');const item={name:nm,cat,region:f?f.name:'Non attribuée',lat:coord[1],lon:coord[0],tags,el:g};nationalPoints.push(item);const open=()=>{infoEl.innerHTML='';const h2=document.createElement('h2');h2.textContent='Structure sanitaire';const t=document.createElement('p');t.className='t';t.textContent=nm;const s=document.createElement('p');s.className='s';s.textContent=typeLabel(cat)+' · '+item.region+' · '+coord[1].toFixed(5)+', '+coord[0].toFixed(5);infoEl.append(h2,t,s);};g.addEventListener('click',open);g.addEventListener('focus',open);g.addEventListener('mouseenter',open);g.addEventListener('mouseleave',()=>{if(!lock)show(null)});g.style.display=NCAT[cat].on?'':'none';});
@@ -345,22 +350,30 @@ async function loadNational(){
   candidates.forEach((r,i)=>{r.svgBounds=bboxSvg(r.feature);r.color=i%8;const all=collectPoints(r.feature.geometry);let sx=0,sy=0;all.forEach(c=>{sx+=c[0];sy+=c[1]});const center=all.length?[sx/all.length,sy/all.length]:[(minX+maxX)/2,(minY+maxY)/2];r.center=project(center[0],center[1]);r.name=regionAliases[clean(r.raw)]||r.name;regions.push(r);const path=el('path',{d:geomPath(r.feature.geometry),class:'zone c'+r.color,'fill-rule':'evenodd',tabindex:'0',role:'button','aria-label':r.name},nationalSvg);path.addEventListener('mouseenter',()=>{if(view==='national')show('region:'+r.name)});path.addEventListener('focus',()=>show('region:'+r.name));path.addEventListener('click',()=>{view=r.name;lock=null;[...tabsEl.children].forEach(t=>t.setAttribute('aria-pressed',t.dataset.v===view));render();show(null)});const tx=el('text',{x:r.center[0],y:r.center[1],class:'lab','text-anchor':'middle'},nationalLabels);tx.textContent=r.name;});
   // Load public health-related OSM objects; preserve the original Dakar dataset as a separate detailed view.
   makeTabs();view='national';[...tabsEl.children].forEach(t=>t.setAttribute('aria-pressed',t.dataset.v===view));render();show(null);
-  const query='[out:json][timeout:90];(nwr(12.2,-17.7,16.8,-11.2)["healthcare"];nwr(12.2,-17.7,16.8,-11.2)["amenity"~"hospital|clinic|doctors|pharmacy|dentist|health_post|health_centre|nursing_home"];nwr(12.2,-17.7,16.8,-11.2)["name"~"hopital|hôpital|centre de sante|centre de santé|poste de sante|poste de santé|case de sante|case de santé|clinique|polyclinique|cabinet medical|cabinet médical|plateau technique|centre.*medical.*sapeur|dispensaire|maternite|maternité|infirmerie|laboratoire",i];);out center tags;';
-  const endpoints=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter'];let elements=null;
-  for(const endpoint of endpoints){
-   try{
-    let r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(query)});
-    if(!r.ok)throw new Error('Overpass POST '+r.status);
-    let j=await r.json();
-    if(Array.isArray(j.elements)){elements=j.elements;break;}
-   }catch(e){lastErr=e;}
-   try{
-    const r=await fetch(endpoint+'?data='+encodeURIComponent(query),{method:'GET'});
-    if(!r.ok)throw new Error('Overpass GET '+r.status);
-    const j=await r.json();
-    if(Array.isArray(j.elements)){elements=j.elements;break;}
-   }catch(e){lastErr=e;}
+  // Requêtes plus petites : la requête unique précédente pouvait expirer avant de renvoyer les points.
+  const bbox='(12.2,-17.7,16.8,-11.2)';
+  const queries=[
+   '[out:json][timeout:35];nwr'+bbox+'["healthcare"~"hospital|clinic|centre|health_post|pharmacy|doctor|dentist|laboratory|dispensary|midwife|nurse|social_facility"];out center tags;',
+   '[out:json][timeout:35];nwr'+bbox+'["amenity"~"hospital|clinic|doctors|pharmacy|dentist|health_post|health_centre|nursing_home"];out center tags;',
+   '[out:json][timeout:35];nwr'+bbox+'["name"~"hopital|hôpital|centre de sante|centre de santé|poste de sante|poste de santé|case de sante|case de santé|clinique|polyclinique|cabinet medical|cabinet médical|plateau technique|centre.*medical.*sapeur|dispensaire|maternite|maternité|infirmerie|laboratoire",i];out center tags;'
+  ];
+  const endpoints=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://overpass.private.coffee/api/interpreter'];
+  const collected=new Map();let elements=null;
+  for(const query of queries){
+   let found=false;
+   for(const endpoint of endpoints){
+    try{
+     const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(query)});
+     if(!r.ok)throw new Error('Overpass '+r.status);
+     const j=await r.json();
+     if(Array.isArray(j.elements)){j.elements.forEach(e=>collected.set(String(e.type)+':'+String(e.id),e));found=true;break;}
+    }catch(e){lastErr=e;}
+   }
+   if(found)elements=[...collected.values()];
+   // Draw partial results as soon as a query succeeds, instead of waiting for every endpoint.
+   if(elements){drawNationalPoints(elements);render();}
   }
+  if(!elements&&collected.size)elements=[...collected.values()];
   if(elements){
    drawNationalPoints(elements);
    const counts={};Object.keys(NCAT).forEach(k=>counts[k]=0);nationalPoints.forEach(p=>counts[p.cat]++);
