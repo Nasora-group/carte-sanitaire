@@ -279,10 +279,10 @@ addEventListener('resize',render);
  }
  async function loadNational(){
   infoEl.innerHTML='<h2>Chargement</h2><p class="s">Récupération des limites régionales du Sénégal…</p>';
-  const urls=['https://galsenapi.lassanasiby.com/api/v1/regions/geojson/','https://apps.orvlabs.com/donnees/contours-region.geojson'];
+  const urls=['https://gisgp-files.s3.eu-west-1.amazonaws.com/downloads/regions/senegal/senegal-regions.geojson','https://galsenapi.lassanasiby.com/api/v1/regions/geojson/','https://apps.orvlabs.com/donnees/contours-region.geojson'];
   let geo=null,lastErr=null;
-  for(const url of urls){try{const r=await fetch(url,{headers:{Accept:'application/geo+json, application/json'},mode:'cors'});if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();geo=j.type==='FeatureCollection'?j:j.geojson?.type==='FeatureCollection'?j.geojson:j.results?.type==='FeatureCollection'?j.results:null;if(geo&&geo.features?.length)break;}catch(e){lastErr=e;}}
-  if(!geo||!geo.features?.length){infoEl.innerHTML='<h2>Carte nationale indisponible</h2><p class="s">Impossible de charger les limites régionales depuis les sources en ligne. Vérifie la connexion Internet puis recharge la page.</p><p><a href="https://www.esante.sn/" target="_blank" rel="noopener">Ouvrir le portail officiel eSanté</a></p>';return;}
+  for(const url of urls){try{const r=await fetch(url,{headers:{Accept:'application/geo+json, application/json'},mode:'cors'});if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();geo=j.type==='FeatureCollection'?j:j.geojson?.type==='FeatureCollection'?j.geojson:j.data?.type==='FeatureCollection'?j.data:j.results?.type==='FeatureCollection'?j.results:null;if(geo&&geo.features?.length)break;}catch(e){lastErr=e;}}
+  if(!geo||!geo.features?.length){view='national';setNationalLayerVisibility();infoEl.innerHTML='<h2>Carte nationale non chargée</h2><p class="s">Les contours régionaux n’ont pas pu être téléchargés. La carte de Dakar ne doit pas être confondue avec une carte nationale. Recharge la page avec une connexion Internet.</p><p><a href="https://gisgp.com/boundaries/senegal" target="_blank" rel="noopener">Source des 14 régions du Sénégal</a> · <a href="https://www.esante.sn/" target="_blank" rel="noopener">Portail officiel eSanté</a></p>';return;}
   const candidates=geo.features.map(f=>({feature:f,raw:propName(f.properties||{}),name:regionAliases[clean(propName(f.properties||{}))]||propName(f.properties||{})}));
   // Recalibrer les coordonnées pour dessiner les 14 régions sur le même canevas SVG que la carte de Dakar.
   let minX=180,minY=90,maxX=-180,maxY=-90;candidates.forEach(r=>eachCoord(r.feature.geometry,(x,y)=>{minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y)}));
